@@ -1,0 +1,105 @@
+measures <- read.csv("G:/study/ADM/MEASURESOFBIRTHANDDEATH.csv", header = T, na.strings = c(""), stringsAsFactors = T)
+measures <- data.frame(measures$CHSI_State_Name, measures$Brst_Cancer, measures$Lung_Cancer, measures$Col_Cancer, measures$CHD, measures$Homicide, measures$MVA, measures$Stroke, measures$Suicide, measures$Injury, measures$Total_Deaths)
+#------replacing -1111.1 and -2222.2 values with NA-------------------------------------------------------------------
+measures[measures==-2222.2] <- NA
+table(is.na(measures$measures.Total_Deaths))
+#------imputing NULL values with mice packge and norm.predict----------------------------------------------------------------------------------------                      
+library(mice)
+mice.mod <- mice(measures[, !names(measures) %in% c("measures.CHSI_State_Name")], method="norm.predict")
+mice.out <- complete(mice.mod)
+mice.out <- mice.out[,-11]
+mice.out$state <- measures$measures.CHSI_State_Name
+#---------------summing-columns-based-on-rownames-------------------------------------------------------------------------------------- 
+library(plyr)
+colnames(mice.out)
+sum.state <- ddply(mice.out, "state", numcolwise(sum))
+sum.state$measures.Total_Deaths <- as.integer(sum.state$measures.Total_Deaths)
+sum.state1 <- sum.state[,-1]
+rownames(sum.state1) <- sum.state[,1]
+#--------------------------------------------------------------------------------------------------------------------
+sum.state <- read.csv("G:/study/ADM/sum_state.csv", header = T, na.strings = c(""), stringsAsFactors = T)
+sum.state <- sum.state[, -1]
+sum.state1 <- sum.state[,-1]
+rownames(sum.state1) <- sum.state[,1]
+df <- scale(sum.state1)
+df <- data.frame(matrix(unlist(df), nrow=51, byrow=T))
+df$state <- sum.state$state
+colnames(df)
+colnames(df)<- c("Brst_cancer","lung_cancer","Col_cancer", "CHD","Homicide","MVA","Stroke","Suicide","Injury","Total_death","State")
+setwd("G:/study/ADM")
+write.csv(df, file="df_scale.csv")
+#-------pca-----------------------------------------------------------------------------------------------------------#
+df <- read.csv("G:/study/ADM/df_scale.csv", header = T, na.strings = c(""), stringsAsFactors = T)
+summary(df)
+df_cor <- df[,-1]
+cor(df_cor)
+pca1 <- princomp(df_cor, scores = TRUE, cor = TRUE)
+summary(pca1)
+loadings(pca1)
+#screeplot
+plot(pca1)
+screeplot(pca1, type = "line", main = "Scree Plot")
+biplot(pca1)
+pca1$scores[1:10,]
+fact_ana <- factanal(df_cor, factor=3)
+fact_ana
+fact_ana1 <- factanal(df_cor, factor=3, rotation = "varimax")
+fact_ana1                    
+fact_ana2 <- factanal(df_cor, factors = 3, scores = "regression")
+fact_ana2
+library(factoextra)
+library(FactoMineR) 
+pca2 <- PCA(df[,-11], scale.unit = T, ncp = 3)
+#------------------k means---------------------------------------------------------------
+library(tidyverse)
+library(cluster)
+library(factoextra)
+        
+df_scale <- read.csv("G:/study/ADM/df_scale.csv",header = T, na.strings = c(""),stringsAsFactors = T)
+df_states_fin <- df_scale[,-c(2:7,9)]
+df_states_fin1 <- df_states_fin[,-1]
+rownames(df_states_fin1) <- df_states_fin[,1]
+head(df_states_fin1)
+df_states <- df_states[,-c(2:6)]
+setwd("G:/study/ADM")
+df_states <- read.csv("G:/study/ADM/df_states.csv", header = T,na.strings = c(""),stringsAsFactors = T)
+distance <- get_dist(df_states_fin1)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+df_states1 <- df_states[,-1]
+rownames(df_states1) <- df_states[,1]
+state_dist <- get_dist(df_states1)
+fviz_dist(state_dist, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+k_2 <- kmeans(df_states_fin1, centers = 2, nstart = 25)
+str(k_2) 
+k_2
+fviz_cluster(k_2, data = df_states_fin1)
+k_3 <- kmeans(df_states_fin1, centers = 3, nstart = 25)
+k_4 <- kmeans(df_states_fin1, centers = 4, nstart = 25)
+k_5 <- kmeans(df_states_fin1, centers = 5, nstart = 25)
+
+plot_1 <- fviz_cluster(k_2, geom = "point", data = df_states_fin1) + ggtitle("k = 2")
+plot_2 <- fviz_cluster(k_3, geom = "point", data = df_states_fin1) + ggtitle("k = 3")
+plot_3 <- fviz_cluster(k_4, geom = "point", data = df_states_fin1) + ggtitle("k = 4")
+plot_4 <- fviz_cluster(k_5, geom = "point", data = df_states_fin1) + ggtitle("k = 5")
+
+library(gridExtra)
+grid.arrange(plot_1, plot_2, plot_3, plot_4, nrow = 2)
+#----------elbow method-------------------------------------------------------------------
+#-----@REFERENCE-https://uc-r.github.io/kmeans_clustering/mapfunction---------------------- 
+set.seed(2018)
+withinss <- function(k) {
+  kmeans(df_states_fin1, k, nstart = 10 )$tot.withinss
+}
+k.values <- 1:15
+withinss_values <- map_dbl(k.values, withinss)
+plot(k.values, withinss_values,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters",
+     ylab="Total within-clusters sum of squares")
+set.seed(2018)
+fviz_nbclust(df_states_fin1, kmeans, method = "wss")
+#----------------------average-silhouette-function-------------------------------------------
+average.sil <- function(k) {
+  kmeans.res <- kmeans(df_states_fin1, centers = k, nstart = 25)
+  s_width <- silhouette(kmeans.res$cluster, dist(df_states_fin1))
+  mean(s_width[,3])
